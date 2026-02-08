@@ -1,64 +1,78 @@
 import { useState } from "react";
 import { reviewCode } from "../services/api";
 
-const CodeEditor = ({ onResult }) => {
+const CodeEditor = ({ onResult, mode }) => {
   const [code, setCode] = useState("");
+  const [language, setLanguage] = useState("python");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
 
   const submitCode = async () => {
-    // 🛑 Guard: empty input
-    if (!code || !code.trim()) {
-      alert("Please enter some code before submitting.");
-      return;
-    }
+    if (!code.trim()) return;
 
     setLoading(true);
-    setError(null);
 
-    // 🔍 DEBUG: log payload before sending
     const payload = {
-      language: "python",
-      context: "deployment",
-      code: code
+      language,
+      context: mode === "interview" ? "interview" : "deployment",
+      code,
     };
 
-    console.log("Submitting payload:", payload);
-
-    try {
-      const result = await reviewCode(payload);
-      onResult(result);
-    } catch (err) {
-      console.error("API ERROR:", err);
-      setError("Failed to analyze code. Check backend connection.");
-    } finally {
-      setLoading(false);
-    }
+    const result = await reviewCode(payload);
+    onResult(result);
+    setLoading(false);
   };
 
   return (
-    <div>
-      <h2>Submit Code for Review</h2>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+      {/* Header */}
+      <div className="px-4 py-3 border-b flex items-center justify-between">
+        <h2 className="font-semibold text-gray-800">
+          {mode === "interview" ? "Interview Practice Editor" : "Code Editor"}
+        </h2>
 
+        <select
+          value={language}
+          onChange={(e) => setLanguage(e.target.value)}
+          className="border rounded-md px-2 py-1 text-sm bg-white"
+        >
+          <option value="python">Python</option>
+          <option value="javascript">JavaScript</option>
+          <option value="c">C</option>
+          <option value="cpp">C++</option>
+          <option value="java">Java</option>
+        </select>
+      </div>
+
+      {/* 🧠 CODE EDITOR AREA */}
       <textarea
-        rows="10"
-        cols="80"
         value={code}
-        placeholder="Paste your Python code here..."
         onChange={(e) => setCode(e.target.value)}
+        placeholder={`Write your ${language} code here...`}
+        className="
+          w-full h-72
+          bg-gray-900 text-gray-100
+          font-mono text-sm
+          p-4
+          outline-none
+          resize-none
+          placeholder-gray-400
+        "
       />
 
-      <br />
-
-      <button onClick={submitCode} disabled={loading}>
-        {loading ? "Analyzing..." : "Review Code"}
-      </button>
-
-      {error && (
-        <p style={{ color: "red", marginTop: "10px" }}>
-          {error}
-        </p>
-      )}
+      {/* Footer */}
+      <div className="px-4 py-3 border-t flex justify-end">
+        <button
+          onClick={submitCode}
+          disabled={loading}
+          className={`px-5 py-2 rounded-md font-semibold text-white transition
+            ${mode === "interview"
+              ? "bg-green-600 hover:bg-green-700"
+              : "bg-blue-600 hover:bg-blue-700"}
+            ${loading && "opacity-60 cursor-not-allowed"}`}
+        >
+          {loading ? "Analyzing..." : "Run Analysis"}
+        </button>
+      </div>
     </div>
   );
 };

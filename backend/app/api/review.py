@@ -3,7 +3,8 @@ from pydantic import ValidationError
 
 from app.models.schemas import ReviewRequest
 from app.core.analyzer import analyze_code
-from app.core.deduplicator import deduplicate_issues   # 🔥 NEW
+from app.core.project_analyzer import analyze_project   # 🔥 NEW
+from app.core.deduplicator import deduplicate_issues
 from app.core.scorer import calculate_risk
 from app.core.decision import make_decision
 from app.core.ai_reasoner import enrich_issue
@@ -14,6 +15,9 @@ router = APIRouter()
 
 @router.post("/review")
 async def review_code(request: Request):
+    # =================================================
+    # Step 0: Parse & validate request
+    # =================================================
     try:
         data = await request.json()
         payload = ReviewRequest(**data)
@@ -23,9 +27,36 @@ async def review_code(request: Request):
         raise HTTPException(status_code=422, detail="Invalid or empty JSON body")
 
     # =================================================
-    # Step 1: Analyze code (raw issues)
+    # Step 1: Analyze code (SINGLE or PROJECT MODE)
     # =================================================
-    raw_issues = analyze_code(payload.code, payload.language)
+    raw_issues = []
+
+    if payload.files:
+        # -----------------------------
+        # PROJECT MODE (multi-file)
+        # -----------------------------
+        project_results = analyze_project(payload.files, payload.language)
+
+        # Flatten issues for scoring & decision
+        for file_result in project_results:
+            for issue in file_result["issues"]:
+                issue["path"] = file_result["path"]
+                raw_issues.append(issue)
+
+        analysis_mode = "project"
+
+    elif payload.code:
+        # -----------------------------
+        # SINGLE FILE MODE (legacy)
+        # -----------------------------
+        raw_issues = analyze_code(payload.code, payload.language)
+        analysis_mode = "single-file"
+
+    else:
+        raise HTTPException(
+            status_code=422,
+            detail="Either 'code' or 'files' must be provided"
+        )
 
     # =================================================
     # Step 2: Filter issues by language
@@ -38,12 +69,12 @@ async def review_code(request: Request):
         filtered_issues.append(issue)
 
     # =================================================
-    # 🔥 Step 3: Deduplicate issues (CRITICAL UPGRADE)
+    # Step 3: Deduplicate issues
     # =================================================
     deduped_issues = deduplicate_issues(filtered_issues)
 
     # =================================================
-    # Step 4: Enrich issues (reasoning + confidence)
+    # Step 4: Enrich issues (AI reasoning + confidence)
     # =================================================
     enriched_issues = [
         enrich_issue(issue, payload.context)
@@ -51,17 +82,21 @@ async def review_code(request: Request):
     ]
 
     # =================================================
-    # Step 5: Score & decision
+    # Step 5: Risk scoring & decision gate
     # =================================================
     risk_score, metrics = calculate_risk(enriched_issues)
     decision = make_decision(risk_score, enriched_issues)
 
     # =================================================
-    # Step 6: Analysis coverage
+    # Step 6: Coverage reporting
     # =================================================
     coverage = get_language_coverage(payload.language)
 
+    # =================================================
+    # Final response
+    # =================================================
     return {
+        "mode": analysis_mode,
         "decision": decision,
         "risk_score": risk_score,
         "summary": f"{len(enriched_issues)} issue(s) detected",

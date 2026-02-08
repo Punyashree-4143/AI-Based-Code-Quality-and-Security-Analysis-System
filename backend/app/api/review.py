@@ -3,7 +3,7 @@ from pydantic import ValidationError
 
 from app.models.schemas import ReviewRequest
 from app.core.analyzer import analyze_code
-from app.core.project_analyzer import analyze_project   # 🔥 NEW
+from app.core.project_analyzer import analyze_project
 from app.core.deduplicator import deduplicate_issues
 from app.core.scorer import calculate_risk
 from app.core.decision import make_decision
@@ -32,12 +32,8 @@ async def review_code(request: Request):
     raw_issues = []
 
     if payload.files:
-        # -----------------------------
-        # PROJECT MODE (multi-file)
-        # -----------------------------
         project_results = analyze_project(payload.files, payload.language)
 
-        # Flatten issues for scoring & decision
         for file_result in project_results:
             for issue in file_result["issues"]:
                 issue["path"] = file_result["path"]
@@ -46,9 +42,6 @@ async def review_code(request: Request):
         analysis_mode = "project"
 
     elif payload.code:
-        # -----------------------------
-        # SINGLE FILE MODE (legacy)
-        # -----------------------------
         raw_issues = analyze_code(payload.code, payload.language)
         analysis_mode = "single-file"
 
@@ -74,7 +67,7 @@ async def review_code(request: Request):
     deduped_issues = deduplicate_issues(filtered_issues)
 
     # =================================================
-    # Step 4: Enrich issues (AI reasoning + confidence)
+    # Step 4: Enrich issues
     # =================================================
     enriched_issues = [
         enrich_issue(issue, payload.context)
@@ -85,10 +78,10 @@ async def review_code(request: Request):
     # Step 5: Risk scoring & decision gate
     # =================================================
     risk_score, metrics = calculate_risk(enriched_issues)
-    decision = make_decision(risk_score, enriched_issues)
+    decision, decision_trace = make_decision(risk_score, enriched_issues)
 
     # =================================================
-    # Step 6: Coverage reporting
+    # Step 6: Coverage
     # =================================================
     coverage = get_language_coverage(payload.language)
 
@@ -98,6 +91,7 @@ async def review_code(request: Request):
     return {
         "mode": analysis_mode,
         "decision": decision,
+        "decision_trace": decision_trace,   # 🔥 NEW
         "risk_score": risk_score,
         "summary": f"{len(enriched_issues)} issue(s) detected",
         "coverage": coverage,

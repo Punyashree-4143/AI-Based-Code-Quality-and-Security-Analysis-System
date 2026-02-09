@@ -1,11 +1,16 @@
 import React, { useState } from "react";
 import axios from "axios";
 
+// Backend base URL (Vercel env variable)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+// Allowed file extensions per language
 const LANGUAGE_EXTENSIONS = {
   python: [".py"],
   javascript: [".js"]
 };
 
+// Severity badge colors
 const severityColors = {
   CRITICAL: "bg-red-100 text-red-800",
   MEDIUM: "bg-yellow-100 text-yellow-800",
@@ -19,6 +24,9 @@ export default function MultiFileReview() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
+  // =========================================
+  // Handle multi-file upload WITH VALIDATION
+  // =========================================
   const handleFileUpload = async (event) => {
     const uploadedFiles = Array.from(event.target.files);
     const allowedExts = LANGUAGE_EXTENSIONS[language];
@@ -51,6 +59,9 @@ export default function MultiFileReview() {
     setResult(null);
   };
 
+  // =========================================
+  // Call backend API
+  // =========================================
   const analyzeProject = async () => {
     if (files.length === 0) {
       alert("Please upload at least one valid file");
@@ -62,7 +73,7 @@ export default function MultiFileReview() {
 
     try {
       const response = await axios.post(
-        "http://127.0.0.1:8000/api/v1/review",
+        `${API_BASE_URL}/api/v1/review`,
         {
           language,
           context: "deployment",
@@ -72,22 +83,30 @@ export default function MultiFileReview() {
 
       setResult(response.data);
     } catch (err) {
+      console.error(err);
       setError("Failed to analyze project");
     } finally {
       setLoading(false);
     }
   };
 
+  // =========================================
+  // Helpers
+  // =========================================
   const projectIssues =
     result?.issues?.filter((i) => i.path === "__project__") || [];
 
   const fileIssues =
     result?.issues?.filter((i) => i.path !== "__project__") || [];
 
+  // =========================================
+  // UI
+  // =========================================
   return (
     <div className="max-w-5xl mx-auto p-6">
       <h2 className="text-2xl font-bold mb-4">🧠 AI Project Code Review</h2>
 
+      {/* Language Selector */}
       <div className="flex items-center gap-4 mb-4">
         <div>
           <label className="font-semibold mr-2">Language:</label>
@@ -106,6 +125,7 @@ export default function MultiFileReview() {
         </div>
       </div>
 
+      {/* File Upload */}
       <input type="file" multiple onChange={handleFileUpload} />
 
       <div className="mt-4">
@@ -122,6 +142,7 @@ export default function MultiFileReview() {
 
       {result && (
         <div className="mt-8 space-y-6">
+          {/* Decision Banner */}
           <div
             className={`p-4 rounded font-semibold ${
               result.decision === "PASS"
@@ -145,6 +166,7 @@ export default function MultiFileReview() {
             )}
           </div>
 
+          {/* Project Issues */}
           {projectIssues.length > 0 && (
             <div className="bg-white p-4 rounded shadow">
               <h3 className="font-bold mb-3">📦 Project Issues</h3>
@@ -161,6 +183,7 @@ export default function MultiFileReview() {
             </div>
           )}
 
+          {/* File Issues */}
           {fileIssues.length > 0 && (
             <div className="bg-white p-4 rounded shadow">
               <h3 className="font-bold mb-3">📄 File Issues</h3>

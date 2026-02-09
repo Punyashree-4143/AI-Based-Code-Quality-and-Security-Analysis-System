@@ -1,6 +1,7 @@
 import axios from "axios";
 
-const API_BASE_URL = "http://127.0.0.1:8000";
+// Backend base URL from environment (Vite + Vercel)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export const reviewCode = async (payload) => {
   const response = await axios.post(
@@ -12,5 +13,6 @@ export const reviewCode = async (payload) => {
       }
     }
   );
+
   return response.data;
 };

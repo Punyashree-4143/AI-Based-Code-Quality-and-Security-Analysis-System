@@ -1,16 +1,13 @@
 import React, { useState } from "react";
 import axios from "axios";
 
-// Backend base URL (Vercel env variable)
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-// Allowed file extensions per language
 const LANGUAGE_EXTENSIONS = {
   python: [".py"],
   javascript: [".js"]
 };
 
-// Severity badge colors
 const severityColors = {
   CRITICAL: "bg-red-100 text-red-800",
   MEDIUM: "bg-yellow-100 text-yellow-800",
@@ -24,9 +21,6 @@ export default function MultiFileReview() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
-  // =========================================
-  // Handle multi-file upload WITH VALIDATION
-  // =========================================
   const handleFileUpload = async (event) => {
     const uploadedFiles = Array.from(event.target.files);
     const allowedExts = LANGUAGE_EXTENSIONS[language];
@@ -59,9 +53,6 @@ export default function MultiFileReview() {
     setResult(null);
   };
 
-  // =========================================
-  // Call backend API
-  // =========================================
   const analyzeProject = async () => {
     if (files.length === 0) {
       alert("Please upload at least one valid file");
@@ -90,23 +81,16 @@ export default function MultiFileReview() {
     }
   };
 
-  // =========================================
-  // Helpers
-  // =========================================
   const projectIssues =
     result?.issues?.filter((i) => i.path === "__project__") || [];
 
   const fileIssues =
     result?.issues?.filter((i) => i.path !== "__project__") || [];
 
-  // =========================================
-  // UI
-  // =========================================
   return (
     <div className="max-w-5xl mx-auto p-6">
       <h2 className="text-2xl font-bold mb-4">🧠 AI Project Code Review</h2>
 
-      {/* Language Selector */}
       <div className="flex items-center gap-4 mb-4">
         <div>
           <label className="font-semibold mr-2">Language:</label>
@@ -125,7 +109,6 @@ export default function MultiFileReview() {
         </div>
       </div>
 
-      {/* File Upload */}
       <input type="file" multiple onChange={handleFileUpload} />
 
       <div className="mt-4">
@@ -142,6 +125,7 @@ export default function MultiFileReview() {
 
       {result && (
         <div className="mt-8 space-y-6">
+
           {/* Decision Banner */}
           <div
             className={`p-4 rounded font-semibold ${
@@ -152,9 +136,9 @@ export default function MultiFileReview() {
                 : "bg-red-100 text-red-800"
             }`}
           >
-            Decision: {result.decision} | Risk Score: {result.risk_score}
+            Decision: {result.decision} | Final Risk Score: {result.final_score}
 
-            {result.decision_trace && result.decision_trace.length > 0 && (
+            {result.decision_trace?.length > 0 && (
               <div className="mt-2 text-sm font-normal">
                 <strong>Why this decision:</strong>
                 <ul className="list-disc ml-5">
@@ -164,6 +148,16 @@ export default function MultiFileReview() {
                 </ul>
               </div>
             )}
+          </div>
+
+          {/* Risk Breakdown */}
+          <div className="bg-white p-4 rounded shadow">
+            <h3 className="font-bold mb-3">📊 Risk Breakdown</h3>
+            <ul className="space-y-1 text-sm">
+              <li>• Static Risk: {result.risk_breakdown?.static_risk}</li>
+              <li>• Structural Risk: {result.risk_breakdown?.structural_risk}</li>
+              <li>• AI Advisory Impact: +{result.risk_breakdown?.ai_modifier}</li>
+            </ul>
           </div>
 
           {/* Project Issues */}
@@ -200,6 +194,20 @@ export default function MultiFileReview() {
               ))}
             </div>
           )}
+
+          {/* AI Advisory Section */}
+          {result.ai_section?.advisory && (
+            <div className="bg-purple-50 border border-purple-200 p-4 rounded shadow">
+              <h3 className="font-bold mb-2">🧠 AI Architectural Advisory</h3>
+              <p className="text-sm whitespace-pre-line">
+                {result.ai_section.advisory}
+              </p>
+              <p className="mt-2 text-xs text-gray-600">
+                Interview Readiness: {result.ai_section.interview_readiness}%
+              </p>
+            </div>
+          )}
+
         </div>
       )}
     </div>

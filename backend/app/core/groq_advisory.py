@@ -7,14 +7,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def generate_groq_advisory(code: str, language: str, context: str):
+def generate_groq_advisory(
+    mode="single",
+    code=None,
+    project_summary=None,
+    language="python",
+    issues=None
+):
     """
-    Calls Groq LLM and returns structured JSON:
-    {
-        "advisory": "...",
-        "risk_modifier": int,
-        "readiness_score": int
-    }
+    Hybrid LLM advisory layer.
+    Static remains authority.
+    LLM gives architectural / quality suggestions only.
     """
 
     api_key = os.getenv("GROQ_API_KEY")
@@ -29,30 +32,70 @@ def generate_groq_advisory(code: str, language: str, context: str):
     try:
         client = Groq(api_key=api_key)
 
-        prompt = f"""
+        # =========================================================
+        # SINGLE FILE MODE
+        # =========================================================
+        if mode == "single":
+
+            prompt = f"""
 You are a strict senior code reviewer.
 
-Carefully analyze the following {language} code.
-Only mention real issues that exist in the code.
-Do not hallucinate.
-Be specific and practical.
+Analyze the following {language} code.
 
-Return STRICTLY valid JSON in this format:
+Only mention REAL issues present in the code.
+Do NOT hallucinate.
+Do NOT repeat obvious syntax errors.
+Be concise and practical.
+
+Return STRICTLY valid JSON only:
 
 {{
-  "advisory": "<Write 3-5 specific improvement suggestions based on the actual code>",
-  "risk_modifier": <integer between 0 and 10>,
-  "readiness_score": <integer between 0 and 100>
+  "advisory": "3-5 concrete improvement suggestions",
+  "risk_modifier": 0-10,
+  "readiness_score": 0-100
 }}
 
 Code:
 {code}
 """
 
+        # =========================================================
+        # PROJECT MODE (Architectural Only)
+        # =========================================================
+        else:
+
+            prompt = f"""
+You are a senior software architect.
+
+The static analyzer has already identified structural issues.
+
+DO NOT repeat static issues.
+Focus ONLY on:
+- Architecture
+- Modularity
+- Maintainability
+- Code organization
+- Testing strategy
+
+Project Summary:
+{json.dumps(project_summary, indent=2)}
+
+Return STRICTLY valid JSON:
+
+{{
+  "advisory": "Architectural and maintainability suggestions only",
+  "risk_modifier": 0-5,
+  "readiness_score": 0-100
+}}
+"""
+
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
-                {"role": "system", "content": "Return only valid JSON. No markdown. No explanations."},
+                {
+                    "role": "system",
+                    "content": "Return ONLY valid JSON. No markdown. No explanation."
+                },
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2
@@ -60,27 +103,43 @@ Code:
 
         content = response.choices[0].message.content.strip()
 
-        # 🔹 Remove markdown JSON blocks if present
-        content = re.sub(r"```json", "", content)
-        content = re.sub(r"```", "", content).strip()
+        # ---------------------------------------------------------
+        # 🔒 SAFE JSON EXTRACTION (IGNORE EXTRA TEXT)
+        # ---------------------------------------------------------
+        json_match = re.search(r"\{.*\}", content, re.DOTALL)
 
-        # 🔹 Attempt JSON parsing
+        if json_match:
+            json_block = json_match.group(0)
+            parsed = json.loads(json_block)
+        else:
+            raise ValueError("No valid JSON returned")
+
+        # ---------------------------------------------------------
+        # 🔒 SAFE INTEGER HANDLING
+        # ---------------------------------------------------------
         try:
-            parsed = json.loads(content)
+            risk_modifier = int(parsed.get("risk_modifier", 0))
+        except:
+            risk_modifier = 0
 
-            return {
-                "advisory": parsed.get("advisory", ""),
-                "risk_modifier": parsed.get("risk_modifier", 0),
-                "readiness_score": parsed.get("readiness_score", 0)
-            }
+        try:
+            readiness_score = int(parsed.get("readiness_score", 0))
+        except:
+            readiness_score = 0
 
-        except json.JSONDecodeError:
-            # Fallback if malformed
-            return {
-                "advisory": content,
-                "risk_modifier": 3,
-                "readiness_score": 70
-            }
+        # Clamp values safely
+        if mode == "project":
+            risk_modifier = max(0, min(risk_modifier, 5))
+        else:
+            risk_modifier = max(0, min(risk_modifier, 10))
+
+        readiness_score = max(0, min(readiness_score, 100))
+
+        return {
+            "advisory": parsed.get("advisory", ""),
+            "risk_modifier": risk_modifier,
+            "readiness_score": readiness_score
+        }
 
     except Exception as e:
         return {

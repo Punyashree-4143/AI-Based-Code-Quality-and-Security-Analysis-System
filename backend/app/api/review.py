@@ -77,63 +77,88 @@ async def review_code(request: Request):
     ]
 
     # =================================================
-    # Step 5: Static Risk Scoring
+    # Step 5: Static Risk Scoring (Authority)
     # =================================================
     static_score, metrics = calculate_risk(enriched_issues)
 
     # =================================================
-    # Step 6: Structural Risk (Project-Level)
+    # Step 6: Structural Risk (Project-Level Only)
     # =================================================
     project_score = 0
 
     if analysis_mode == "project":
-        # Simple structural heuristic (can refine later)
         project_score = min(40, len(enriched_issues) * 5)
 
     # =================================================
-    # Step 7: AI Advisory (LLM - Safe Handling)
+    # Step 7: LLM Advisory (Advisory Layer Only)
     # =================================================
     llm_advisory = None
     llm_modifier = 0
     interview_readiness = 0
 
-    if payload.code:
-        try:
+    try:
+
+        if analysis_mode == "single-file" and payload.code:
+
             llm_response = generate_groq_advisory(
+                mode="single",
                 code=payload.code,
                 language=payload.language,
-                context=payload.context
+                issues=enriched_issues
             )
 
-            if isinstance(llm_response, dict):
-                llm_advisory = llm_response.get("advisory")
+        elif analysis_mode == "project" and payload.files:
 
-                # 🔹 Force safe integer conversion
-                try:
-                    llm_modifier = int(llm_response.get("risk_modifier", 0))
-                except (ValueError, TypeError):
-                    llm_modifier = 0
+            # Create lightweight project summary (NOT full raw project)
+            project_summary = {
+                "file_count": len(payload.files),
+                "issues_detected": len(enriched_issues),
+                "critical_issues": [
+                    i["message"] for i in enriched_issues
+                    if i["severity"] == "CRITICAL"
+                ],
+                "files": [f.path for f in payload.files]
+            }
 
-                try:
-                    interview_readiness = int(llm_response.get("readiness_score", 0))
-                except (ValueError, TypeError):
-                    interview_readiness = 0
+            llm_response = generate_groq_advisory(
+                mode="project",
+                project_summary=project_summary,
+                language=payload.language,
+                issues=enriched_issues
+            )
 
-                # 🔹 Clamp values for safety
-                llm_modifier = max(0, min(llm_modifier, 10))
-                interview_readiness = max(0, min(interview_readiness, 100))
+        else:
+            llm_response = None
 
+        if isinstance(llm_response, dict):
+            llm_advisory = llm_response.get("advisory")
+
+            # Safe int conversion
+            try:
+                llm_modifier = int(llm_response.get("risk_modifier", 0))
+            except:
+                llm_modifier = 0
+
+            try:
+                interview_readiness = int(llm_response.get("readiness_score", 0))
+            except:
+                interview_readiness = 0
+
+            # Clamp strictly
+            if analysis_mode == "project":
+                llm_modifier = max(0, min(llm_modifier, 5))  # project influence limited
             else:
-                llm_advisory = str(llm_response)
+                llm_modifier = max(0, min(llm_modifier, 10))
 
-        except Exception as e:
-            # Fail-safe: LLM must never break review
-            llm_advisory = f"AI advisory unavailable: {str(e)}"
-            llm_modifier = 0
-            interview_readiness = 0
+            interview_readiness = max(0, min(interview_readiness, 100))
+
+    except Exception as e:
+        llm_advisory = f"AI advisory unavailable: {str(e)}"
+        llm_modifier = 0
+        interview_readiness = 0
 
     # =================================================
-    # Step 8: Composite Weighted Scoring
+    # Step 8: Composite Weighted Score
     # =================================================
     final_score = int(
         0.5 * static_score +
@@ -141,7 +166,6 @@ async def review_code(request: Request):
         0.2 * llm_modifier
     )
 
-    # Clamp final score
     final_score = max(0, min(final_score, 100))
 
     decision, decision_trace = make_decision(final_score, enriched_issues)
@@ -152,26 +176,22 @@ async def review_code(request: Request):
     coverage = get_language_coverage(payload.language)
 
     # =================================================
-    # Final Unified Response
+    # Final Response
     # =================================================
     return {
         "mode": analysis_mode,
-
         "risk_breakdown": {
             "static_risk": static_score,
             "structural_risk": project_score,
             "ai_modifier": llm_modifier
         },
-
         "final_score": final_score,
         "decision": decision,
         "decision_trace": decision_trace,
-
         "summary": f"{len(enriched_issues)} issue(s) detected",
         "coverage": coverage,
         "metrics": metrics,
         "issues": enriched_issues,
-
         "ai_section": {
             "interview_readiness": interview_readiness,
             "advisory": llm_advisory

@@ -5,8 +5,13 @@ dist/
 # Python
 __pycache__/
 *.pyc
+.venv/
+
+# Environment files (ignore ALL .env anywhere)
 .env
-.venv
+.env.*
+**/.env
+**/.env.*
 
 # OS
 .DS_Store

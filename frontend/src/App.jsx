@@ -3,8 +3,7 @@ import { Routes, Route, Navigate, Link, useLocation } from "react-router-dom";
 
 import CodeEditor from "./components/CodeEditor";
 import ReviewResult from "./components/ReviewResult";
-import InterviewResult from "./components/InterviewResult";
-import MultiFileReview from "./components/MultiFileReview"; // 🆕 NEW
+import MultiFileReview from "./components/MultiFileReview";
 
 function NavLink({ to, label }) {
   const location = useLocation();
@@ -38,9 +37,8 @@ function App() {
           </h1>
 
           <nav className="flex gap-2">
-            <NavLink to="/review" label="General Review" />
-            <NavLink to="/project-review" label="Project Review" /> {/* 🆕 */}
-            <NavLink to="/interview" label="Interview Readiness" />
+            <NavLink to="/review" label="Single File Review" />
+            <NavLink to="/project-review" label="Project Review" />
           </nav>
         </div>
       </header>
@@ -48,6 +46,7 @@ function App() {
       {/* ================= Main ================= */}
       <main className="max-w-7xl mx-auto px-6 py-6">
         <Routes>
+          {/* Default Route */}
           <Route path="/" element={<Navigate to="/review" />} />
 
           {/* -------- Single File Review -------- */}
@@ -55,7 +54,7 @@ function App() {
             path="/review"
             element={
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <CodeEditor onResult={setResult} mode="general" />
+                <CodeEditor onResult={setResult} />
                 <ReviewResult result={result} />
               </div>
             }
@@ -71,16 +70,8 @@ function App() {
             }
           />
 
-          {/* -------- Interview Mode -------- */}
-          <Route
-            path="/interview"
-            element={
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <CodeEditor onResult={setResult} mode="interview" />
-                <InterviewResult result={result} />
-              </div>
-            }
-          />
+          {/* Fallback Route */}
+          <Route path="*" element={<Navigate to="/review" />} />
         </Routes>
       </main>
     </div>

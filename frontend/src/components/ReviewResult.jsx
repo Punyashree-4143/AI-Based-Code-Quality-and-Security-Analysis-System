@@ -7,23 +7,16 @@ const ReviewResult = ({ result }) => {
     PASS: "bg-green-100 text-green-700"
   };
 
-  const getConfidenceColor = (confidence) => {
-    if (confidence >= 0.8) return "bg-red-500";
-    if (confidence >= 0.6) return "bg-yellow-500";
-    return "bg-green-500";
-  };
-
-  const getCoverageColor = (percent) => {
-    if (percent >= 80) return "bg-green-500";
-    if (percent >= 50) return "bg-yellow-500";
-    return "bg-gray-400";
-  };
+  const breakdown = result.risk_breakdown || {};
+  const readiness = result.ai_section?.interview_readiness || 0;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-      <h2 className="text-lg font-semibold mb-4">Review Result</h2>
+      <h2 className="text-lg font-semibold mb-4">
+        AI Code Quality Gate Report
+      </h2>
 
-      {/* Decision + Risk */}
+      {/* Decision + Final Score */}
       <div className="flex items-center gap-4 mb-4">
         <span
           className={`px-3 py-1 rounded-full text-sm font-semibold ${
@@ -34,29 +27,36 @@ const ReviewResult = ({ result }) => {
         </span>
 
         <span className="text-gray-700 font-medium">
-          Risk Score: <b>{result.risk_score}</b>
+          Final Risk Score: <b>{result.final_score}</b>
         </span>
       </div>
 
-      {/* Analysis Coverage */}
-      {result.coverage && (
-        <div className="mb-6">
-          <p className="text-sm font-medium mb-1">
-            Analysis Coverage: {result.coverage.percent}% ({result.coverage.level})
-          </p>
+      {/* Risk Breakdown */}
+      <div className="mb-6 text-sm">
+        <h3 className="font-semibold mb-2">Risk Breakdown</h3>
+        <p>• Static Risk: {breakdown.static_risk}</p>
+        <p>• Structural Risk: {breakdown.structural_risk}</p>
+        <p>• AI Advisory Impact: +{breakdown.ai_modifier}</p>
+      </div>
 
-          <div className="h-2 w-full bg-gray-200 rounded">
-            <div
-              className={`h-2 rounded ${getCoverageColor(result.coverage.percent)}`}
-              style={{ width: `${result.coverage.percent}%` }}
-            />
-          </div>
+      {/* Interview Readiness */}
+      <div className="mb-6">
+        <h3 className="font-semibold mb-2">Interview Readiness</h3>
+        <p className="text-sm font-medium">{readiness}%</p>
 
-          <p className="text-xs text-gray-500 mt-1">
-            {result.coverage.description}
-          </p>
+        <div className="h-2 w-full bg-gray-200 rounded">
+          <div
+            className={`h-2 rounded ${
+              readiness >= 80
+                ? "bg-green-500"
+                : readiness >= 50
+                ? "bg-yellow-500"
+                : "bg-red-500"
+            }`}
+            style={{ width: `${readiness}%` }}
+          />
         </div>
-      )}
+      </div>
 
       {/* Issues */}
       <h3 className="font-semibold mb-3">Issues</h3>
@@ -68,72 +68,35 @@ const ReviewResult = ({ result }) => {
       )}
 
       <div className="space-y-4">
-        {result.issues.map((issue, index) => {
-          const confidence = issue.confidence ?? 0;
-          const confidencePercent = Math.round(confidence * 100);
+        {result.issues.map((issue, index) => (
+          <div
+            key={index}
+            className="border rounded-lg p-4 border-l-4 border-blue-400"
+          >
+            <p className="font-semibold mb-1">
+              [{issue.severity}] {issue.message}
+            </p>
 
-          return (
-            <div
-              key={index}
-              className="border rounded-lg p-4 border-l-4"
-              style={{
-                borderLeftColor:
-                  confidence >= 0.8
-                    ? "#ef4444"
-                    : confidence >= 0.6
-                    ? "#f59e0b"
-                    : "#22c55e"
-              }}
-            >
-              <p className="font-semibold mb-1">
-                [{issue.severity}] {issue.message}
+            {issue.suggestion && (
+              <p className="text-sm text-blue-700 mt-1">
+                <b>Suggestion:</b> {issue.suggestion}
               </p>
-
-              {/* Confidence */}
-              <p className="text-sm mb-1">
-                <b>Confidence:</b> {confidencePercent}%
-              </p>
-
-              <div className="h-2 w-full bg-gray-200 rounded mb-2">
-                <div
-                  className={`h-2 rounded ${getConfidenceColor(confidence)}`}
-                  style={{ width: `${confidencePercent}%` }}
-                />
-              </div>
-
-              {issue.why_it_matters && (
-                <p className="text-sm text-gray-700">
-                  <b>Why it matters:</b> {issue.why_it_matters}
-                </p>
-              )}
-
-              {issue.interview_impact && (
-                <p className="text-sm text-gray-700">
-                  <b>Interview impact:</b> {issue.interview_impact}
-                </p>
-              )}
-
-              {issue.production_risk && (
-                <p className="text-sm text-gray-700">
-                  <b>Production risk:</b> {issue.production_risk}
-                </p>
-              )}
-
-              {issue.long_term_risk && (
-                <p className="text-sm text-gray-700">
-                  <b>Long-term risk:</b> {issue.long_term_risk}
-                </p>
-              )}
-
-              {issue.suggestion && (
-                <p className="text-sm text-blue-700 mt-1">
-                  <b>Suggestion:</b> {issue.suggestion}
-                </p>
-              )}
-            </div>
-          );
-        })}
+            )}
+          </div>
+        ))}
       </div>
+
+      {/* AI Advisory */}
+      {result.ai_section?.advisory && (
+        <div className="mt-6 bg-purple-50 border border-purple-200 p-4 rounded">
+          <h3 className="font-semibold mb-2">
+            🧠 AI Advisory
+          </h3>
+          <p className="text-sm whitespace-pre-line">
+            {result.ai_section.advisory}
+          </p>
+        </div>
+      )}
     </div>
   );
 };

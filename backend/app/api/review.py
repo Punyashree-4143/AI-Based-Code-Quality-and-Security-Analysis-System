@@ -9,7 +9,7 @@ from app.core.scorer import calculate_risk
 from app.core.decision import make_decision
 from app.core.ai_reasoner import enrich_issue
 from app.core.coverage import get_language_coverage
-from app.core.groq_advisory import generate_groq_advisory  # 🔥 NEW
+from app.core.groq_advisory import generate_groq_advisory
 
 router = APIRouter()
 
@@ -18,7 +18,7 @@ router = APIRouter()
 async def review_code(request: Request):
 
     # =================================================
-    # Step 0: Parse & validate request
+    # Step 0: Parse & Validate Request
     # =================================================
     try:
         data = await request.json()
@@ -29,7 +29,7 @@ async def review_code(request: Request):
         raise HTTPException(status_code=422, detail="Invalid or empty JSON body")
 
     # =================================================
-    # Step 1: Analyze code (SINGLE or PROJECT MODE)
+    # Step 1: Analyze Code (Single or Project Mode)
     # =================================================
     raw_issues = []
 
@@ -54,7 +54,7 @@ async def review_code(request: Request):
         )
 
     # =================================================
-    # Step 2: Filter issues by language
+    # Step 2: Filter Issues by Language
     # =================================================
     filtered_issues = []
     for issue in raw_issues:
@@ -64,12 +64,12 @@ async def review_code(request: Request):
         filtered_issues.append(issue)
 
     # =================================================
-    # Step 3: Deduplicate issues
+    # Step 3: Deduplicate Issues
     # =================================================
     deduped_issues = deduplicate_issues(filtered_issues)
 
     # =================================================
-    # Step 4: Enrich issues
+    # Step 4: Enrich Issues
     # =================================================
     enriched_issues = [
         enrich_issue(issue, payload.context)
@@ -77,39 +77,103 @@ async def review_code(request: Request):
     ]
 
     # =================================================
-    # Step 5: Risk scoring & decision gate
+    # Step 5: Static Risk Scoring
     # =================================================
-    risk_score, metrics = calculate_risk(enriched_issues)
-    decision, decision_trace = make_decision(risk_score, enriched_issues)
+    static_score, metrics = calculate_risk(enriched_issues)
 
     # =================================================
-    # Step 6: Coverage
+    # Step 6: Structural Risk (Project-Level)
+    # =================================================
+    project_score = 0
+
+    if analysis_mode == "project":
+        # Simple structural heuristic (can refine later)
+        project_score = min(40, len(enriched_issues) * 5)
+
+    # =================================================
+    # Step 7: AI Advisory (LLM - Safe Handling)
+    # =================================================
+    llm_advisory = None
+    llm_modifier = 0
+    interview_readiness = 0
+
+    if payload.code:
+        try:
+            llm_response = generate_groq_advisory(
+                code=payload.code,
+                language=payload.language,
+                context=payload.context
+            )
+
+            if isinstance(llm_response, dict):
+                llm_advisory = llm_response.get("advisory")
+
+                # 🔹 Force safe integer conversion
+                try:
+                    llm_modifier = int(llm_response.get("risk_modifier", 0))
+                except (ValueError, TypeError):
+                    llm_modifier = 0
+
+                try:
+                    interview_readiness = int(llm_response.get("readiness_score", 0))
+                except (ValueError, TypeError):
+                    interview_readiness = 0
+
+                # 🔹 Clamp values for safety
+                llm_modifier = max(0, min(llm_modifier, 10))
+                interview_readiness = max(0, min(interview_readiness, 100))
+
+            else:
+                llm_advisory = str(llm_response)
+
+        except Exception as e:
+            # Fail-safe: LLM must never break review
+            llm_advisory = f"AI advisory unavailable: {str(e)}"
+            llm_modifier = 0
+            interview_readiness = 0
+
+    # =================================================
+    # Step 8: Composite Weighted Scoring
+    # =================================================
+    final_score = int(
+        0.5 * static_score +
+        0.3 * project_score +
+        0.2 * llm_modifier
+    )
+
+    # Clamp final score
+    final_score = max(0, min(final_score, 100))
+
+    decision, decision_trace = make_decision(final_score, enriched_issues)
+
+    # =================================================
+    # Step 9: Coverage
     # =================================================
     coverage = get_language_coverage(payload.language)
 
     # =================================================
-    # Step 7: Groq AI Advisory (Interview mode only)
-    # =================================================
-    llm_advisory = None
-
-    if payload.context == "interview" and payload.code:
-        llm_advisory = generate_groq_advisory(
-            code=payload.code,
-            language=payload.language,
-            context=payload.context
-        )
-
-    # =================================================
-    # Final response
+    # Final Unified Response
     # =================================================
     return {
         "mode": analysis_mode,
+
+        "risk_breakdown": {
+            "static_risk": static_score,
+            "structural_risk": project_score,
+            "ai_modifier": llm_modifier
+        },
+
+        "final_score": final_score,
         "decision": decision,
         "decision_trace": decision_trace,
-        "risk_score": risk_score,
+
         "summary": f"{len(enriched_issues)} issue(s) detected",
         "coverage": coverage,
         "metrics": metrics,
         "issues": enriched_issues,
-        "llm_advisory": llm_advisory  # 🔥 NEW
+
+        "ai_section": {
+            "interview_readiness": interview_readiness,
+            "advisory": llm_advisory
+        }
     }

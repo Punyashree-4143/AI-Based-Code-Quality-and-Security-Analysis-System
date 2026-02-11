@@ -1,6 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv  # 🔥 NEW
+import os
+
 from app.api.review import router as review_router
+
+# 🔥 Load environment variables from .env
+load_dotenv()
 
 app = FastAPI(
     title="AI Code Quality Gate",
@@ -21,9 +27,9 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,        # must match exactly
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],          # allows POST, OPTIONS (preflight)
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -33,4 +39,7 @@ app.include_router(review_router, prefix="/api/v1")
 # Health check
 @app.get("/")
 def root():
-    return {"status": "AI Code Quality Gate is running"}
+    return {
+        "status": "AI Code Quality Gate is running",
+        "groq_key_loaded": bool(os.getenv("GROQ_API_KEY"))  # 🔥 Debug flag
+    }

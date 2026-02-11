@@ -7,10 +7,11 @@ const CodeEditor = ({ onResult, mode }) => {
   const [loading, setLoading] = useState(false);
 
   const submitCode = async () => {
-    if (!code.trim()) return;
+  if (!code.trim()) return;
 
-    setLoading(true);
+  setLoading(true);
 
+  try {
     const payload = {
       language,
       context: mode === "interview" ? "interview" : "deployment",
@@ -19,8 +20,15 @@ const CodeEditor = ({ onResult, mode }) => {
 
     const result = await reviewCode(payload);
     onResult(result);
-    setLoading(false);
-  };
+
+  } catch (error) {
+    console.error("Analysis failed:", error);
+    alert("Analysis failed. Check backend connection or API key.");
+  }
+
+  setLoading(false);
+};
+
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200">

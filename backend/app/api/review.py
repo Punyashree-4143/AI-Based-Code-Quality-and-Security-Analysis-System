@@ -9,12 +9,14 @@ from app.core.scorer import calculate_risk
 from app.core.decision import make_decision
 from app.core.ai_reasoner import enrich_issue
 from app.core.coverage import get_language_coverage
+from app.core.groq_advisory import generate_groq_advisory  # 🔥 NEW
 
 router = APIRouter()
 
 
 @router.post("/review")
 async def review_code(request: Request):
+
     # =================================================
     # Step 0: Parse & validate request
     # =================================================
@@ -86,15 +88,28 @@ async def review_code(request: Request):
     coverage = get_language_coverage(payload.language)
 
     # =================================================
+    # Step 7: Groq AI Advisory (Interview mode only)
+    # =================================================
+    llm_advisory = None
+
+    if payload.context == "interview" and payload.code:
+        llm_advisory = generate_groq_advisory(
+            code=payload.code,
+            language=payload.language,
+            context=payload.context
+        )
+
+    # =================================================
     # Final response
     # =================================================
     return {
         "mode": analysis_mode,
         "decision": decision,
-        "decision_trace": decision_trace,   # 🔥 NEW
+        "decision_trace": decision_trace,
         "risk_score": risk_score,
         "summary": f"{len(enriched_issues)} issue(s) detected",
         "coverage": coverage,
         "metrics": metrics,
-        "issues": enriched_issues
+        "issues": enriched_issues,
+        "llm_advisory": llm_advisory  # 🔥 NEW
     }

@@ -84,9 +84,26 @@ const InterviewResult = ({ result }) => {
         </>
       )}
 
-      {/* Ready */}
+      {/* ================= AI Advisory ================= */}
+      {result.llm_advisory && result.llm_advisory.enabled && (
+        <div className="mt-6 bg-purple-50 border border-purple-200 p-4 rounded">
+          <h3 className="font-semibold mb-2">
+            🧠 AI Advisory (Experimental)
+          </h3>
+
+          <p className="text-sm whitespace-pre-line">
+            {result.llm_advisory.insight}
+          </p>
+
+          <p className="mt-2 text-xs text-gray-600">
+            {result.llm_advisory.disclaimer}
+          </p>
+        </div>
+      )}
+
+      {/* Ready Message */}
       {isReady && (
-        <p className="text-green-600 font-medium">
+        <p className="text-green-600 font-medium mt-4">
           Your code is suitable for technical interviews 🎉
         </p>
       )}

@@ -2,9 +2,6 @@ import os
 import json
 import re
 from groq import Groq
-from dotenv import load_dotenv
-
-load_dotenv()
 
 
 def generate_groq_advisory(
@@ -14,15 +11,10 @@ def generate_groq_advisory(
     language="python",
     issues=None
 ):
-    """
-    Hybrid LLM advisory layer.
-    Static remains authority.
-    LLM gives architectural / quality suggestions only.
-    """
 
     api_key = os.getenv("GROQ_API_KEY")
 
-    if not api_key:
+    if not api_key or not api_key.strip():
         return {
             "advisory": "GROQ_API_KEY not configured.",
             "risk_modifier": 0,
@@ -30,27 +22,22 @@ def generate_groq_advisory(
         }
 
     try:
-        client = Groq(api_key=api_key)
+        client = Groq(api_key=api_key.strip())
 
-        # =========================================================
-        # SINGLE FILE MODE
-        # =========================================================
+        # ===============================
+        # Build Prompt
+        # ===============================
+
         if mode == "single":
-
             prompt = f"""
 You are a strict senior code reviewer.
 
-Analyze the following {language} code.
-
-Only mention REAL issues present in the code.
-Do NOT hallucinate.
-Do NOT repeat obvious syntax errors.
-Be concise and practical.
-
-Return STRICTLY valid JSON only:
+Analyze this {language} code.
+Only mention REAL issues.
+Return ONLY valid JSON:
 
 {{
-  "advisory": "3-5 concrete improvement suggestions",
+  "advisory": "3-5 improvement suggestions",
   "risk_modifier": 0-10,
   "readiness_score": 0-100
 }}
@@ -58,65 +45,60 @@ Return STRICTLY valid JSON only:
 Code:
 {code}
 """
-
-        # =========================================================
-        # PROJECT MODE (Architectural Only)
-        # =========================================================
         else:
-
             prompt = f"""
 You are a senior software architect.
 
-The static analyzer has already identified structural issues.
-
-DO NOT repeat static issues.
-Focus ONLY on:
-- Architecture
-- Modularity
-- Maintainability
-- Code organization
-- Testing strategy
+Analyze this project summary.
+Focus on architecture and maintainability only.
 
 Project Summary:
 {json.dumps(project_summary, indent=2)}
 
-Return STRICTLY valid JSON:
+Return ONLY valid JSON:
 
 {{
-  "advisory": "Architectural and maintainability suggestions only",
+  "advisory": "Architectural improvements",
   "risk_modifier": 0-5,
   "readiness_score": 0-100
 }}
 """
 
+        # ===============================
+        # Call Groq
+        # ===============================
+
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
-                {
-                    "role": "system",
-                    "content": "Return ONLY valid JSON. No markdown. No explanation."
-                },
+                {"role": "system", "content": "Return strictly JSON only."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.2
+            temperature=0.2,
         )
 
-        content = response.choices[0].message.content.strip()
+        # 🔒 SAFE RESPONSE CHECK
+        if not response or not response.choices:
+            raise ValueError("Empty response from Groq")
 
-        # ---------------------------------------------------------
-        # 🔒 SAFE JSON EXTRACTION (IGNORE EXTRA TEXT)
-        # ---------------------------------------------------------
-        json_match = re.search(r"\{.*\}", content, re.DOTALL)
+        content = response.choices[0].message.content
 
-        if json_match:
-            json_block = json_match.group(0)
-            parsed = json.loads(json_block)
-        else:
-            raise ValueError("No valid JSON returned")
+        if not content or not content.strip():
+            raise ValueError("Groq returned empty content")
 
-        # ---------------------------------------------------------
-        # 🔒 SAFE INTEGER HANDLING
-        # ---------------------------------------------------------
+        content = content.strip()
+
+        # 🔒 Extract first JSON block safely (non-greedy)
+        json_match = re.search(r"\{.*?\}", content, re.DOTALL)
+
+        if not json_match:
+            raise ValueError("No JSON found in Groq response")
+
+        json_block = json_match.group(0)
+
+        parsed = json.loads(json_block)
+
+        # 🔒 Safe int conversion
         try:
             risk_modifier = int(parsed.get("risk_modifier", 0))
         except:
@@ -127,7 +109,7 @@ Return STRICTLY valid JSON:
         except:
             readiness_score = 0
 
-        # Clamp values safely
+        # Clamp safely
         if mode == "project":
             risk_modifier = max(0, min(risk_modifier, 5))
         else:

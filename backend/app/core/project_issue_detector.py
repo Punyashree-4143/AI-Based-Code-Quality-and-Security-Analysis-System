@@ -12,12 +12,7 @@ def detect_project_issues(project_data):
     definitions = project_data.get("definitions", {})
     class_definitions = project_data.get("class_definitions", {})
     calls = project_data.get("calls", {})
-    imports = project_data.get("imports", {})
-
-    # --------------------------------------------------
-    # Collect project-wide imported symbols
-    # --------------------------------------------------
-    imported_symbols = set(imports.keys())
+    imported_symbols = project_data.get("imports", set())
 
     # Real Python builtins
     PYTHON_BUILTINS = set(dir(builtins))
@@ -30,23 +25,23 @@ def detect_project_issues(project_data):
         if not func_name:
             continue
 
-        # Ignore builtins (round, bool, isinstance, etc.)
+        # Ignore builtins
         if func_name in PYTHON_BUILTINS:
             continue
 
-        # Ignore imported symbols (load_dotenv, defaultdict, etc.)
+        # Ignore imported names
         if func_name in imported_symbols:
             continue
 
-        # Ignore class constructors defined in project
+        # Ignore project classes
         if func_name in class_definitions:
             continue
 
-        # Ignore likely framework classes (FastAPI, APIRouter, etc.)
+        # Ignore capitalized framework classes
         if func_name[0].isupper():
             continue
 
-        # Real missing function (internal only)
+        # Real missing internal function
         if func_name not in definitions:
             for file in call_files:
                 issues.append({
@@ -59,11 +54,10 @@ def detect_project_issues(project_data):
                 })
 
     # ==================================================
-    # 2. Function defined but never used (Dead Code)
+    # 2. Dead Code Detection
     # ==================================================
     for func_name, def_files in definitions.items():
 
-        # Ignore private/internal helpers
         if func_name.startswith("_"):
             continue
 
@@ -79,7 +73,7 @@ def detect_project_issues(project_data):
                 })
 
     # ==================================================
-    # 3. Duplicate function definitions
+    # 3. Duplicate Definitions
     # ==================================================
     for func_name, def_files in definitions.items():
         if len(def_files) > 1:

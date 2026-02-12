@@ -8,7 +8,7 @@ class ProjectASTParser(ast.NodeVisitor):
         self.defined_functions = set()
         self.defined_classes = set()
         self.called_functions = set()
-        self.imports = set()
+        self.imported_names = set()
 
     # --------------------------------------------------
     # Function definitions
@@ -25,20 +25,27 @@ class ProjectASTParser(ast.NodeVisitor):
         self.generic_visit(node)
 
     # --------------------------------------------------
-    # Function calls (ONLY standalone functions)
+    # Capture ONLY standalone internal function calls
     # --------------------------------------------------
     def visit_Call(self, node):
-        # Capture only direct calls like:
-        # my_function()
+        """
+        We ONLY collect calls like:
+            my_function()
+
+        We IGNORE:
+            obj.method()
+            module.func()
+            router.get()
+            list.append()
+            string.lower()
+            etc.
+        """
+
         if isinstance(node.func, ast.Name):
             self.called_functions.add(node.func.id)
 
-        # DO NOT capture attribute calls like:
-        # obj.method()
-        # module.func()
-        # router.get()
-        # my_list.append()
-        # etc.
+        # Completely ignore Attribute calls
+        # That eliminates fake CRITICALs
 
         self.generic_visit(node)
 
@@ -48,7 +55,7 @@ class ProjectASTParser(ast.NodeVisitor):
     def visit_Import(self, node):
         for alias in node.names:
             name = alias.asname if alias.asname else alias.name.split(".")[0]
-            self.imports.add(name)
+            self.imported_names.add(name)
         self.generic_visit(node)
 
     # --------------------------------------------------
@@ -57,7 +64,7 @@ class ProjectASTParser(ast.NodeVisitor):
     def visit_ImportFrom(self, node):
         for alias in node.names:
             name = alias.asname if alias.asname else alias.name
-            self.imports.add(name)
+            self.imported_names.add(name)
         self.generic_visit(node)
 
 
@@ -71,7 +78,7 @@ def parse_project_files(files):
         "definitions": defaultdict(list),
         "class_definitions": defaultdict(list),
         "calls": defaultdict(list),
-        "imports": defaultdict(list)
+        "imports": set()   # GLOBAL set now
     }
 
     for file in files:
@@ -83,20 +90,19 @@ def parse_project_files(files):
         parser = ProjectASTParser(file.path)
         parser.visit(tree)
 
-        # Collect function definitions
+        # Functions
         for fn in parser.defined_functions:
             project_data["definitions"][fn].append(file.path)
 
-        # Collect class definitions
+        # Classes
         for cls in parser.defined_classes:
             project_data["class_definitions"][cls].append(file.path)
 
-        # Collect function calls
+        # Calls
         for fn in parser.called_functions:
             project_data["calls"][fn].append(file.path)
 
-        # Collect imports
-        for imp in parser.imports:
-            project_data["imports"][imp].append(file.path)
+        # Imports (GLOBAL)
+        project_data["imports"].update(parser.imported_names)
 
     return project_data

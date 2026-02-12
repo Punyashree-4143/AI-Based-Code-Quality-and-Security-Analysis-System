@@ -1,35 +1,49 @@
 import ast
+import builtins
 
 # =========================================================
-# GENERIC ANALYZER (APPLIES TO ALL LANGUAGES)
+# GENERIC ANALYZER (SAFE & LANGUAGE-AGNOSTIC)
 # =========================================================
 
 SUSPICIOUS_KEYWORDS = ["password", "secret", "token", "apikey", "key"]
-DANGEROUS_KEYWORDS = ["eval(", "exec(", "system(", "os.system", "subprocess"]
+DANGEROUS_KEYWORDS = ["eval", "exec", "system", "subprocess"]
 
 
 def analyze_generic(code: str):
     """
-    Language-agnostic checks.
-    These run for ALL programming languages.
+    Lightweight generic checks.
+    Avoid deep logic here.
     """
     issues = []
     lowered = code.lower()
 
-    # Hardcoded secrets
-    for keyword in SUSPICIOUS_KEYWORDS:
-        if keyword in lowered and "=" in lowered:
-            issues.append({
-                "severity": "MEDIUM",
-                "type": "Security",
-                "message": f"Possible hardcoded secret involving '{keyword}'",
-                "impact": "Credentials may be exposed in source code",
-                "suggestion": "Use environment variables or a secrets manager"
-            })
-            break
+    # -----------------------------------------------------
+    # Hardcoded secrets (smarter detection)
+    # -----------------------------------------------------
+    for line in code.splitlines():
+        stripped = line.strip()
 
-    # Debug statements
-    if "print(" in code or "console.log" in code:
+        if "=" in stripped and not stripped.startswith("#"):
+            left, right = stripped.split("=", 1)
+
+            left = left.strip().lower()
+            right = right.strip()
+
+            if any(keyword in left for keyword in SUSPICIOUS_KEYWORDS):
+                if right.startswith(("\"", "'")):
+                    issues.append({
+                        "severity": "MEDIUM",
+                        "type": "Security",
+                        "message": f"Possible hardcoded secret involving '{left}'",
+                        "impact": "Credentials may be exposed in source code",
+                        "suggestion": "Use environment variables or a secrets manager"
+                    })
+                    break
+
+    # -----------------------------------------------------
+    # Debug statements (generic)
+    # -----------------------------------------------------
+    if "console.log" in lowered:
         issues.append({
             "severity": "LOW",
             "type": "Code Smell",
@@ -38,18 +52,9 @@ def analyze_generic(code: str):
             "suggestion": "Use a proper logging framework or remove debug code"
         })
 
-    # Dangerous execution functions
-    for danger in DANGEROUS_KEYWORDS:
-        if danger in lowered:
-            issues.append({
-                "severity": "CRITICAL",
-                "type": "Security",
-                "message": f"Dangerous function '{danger}' detected",
-                "impact": "May allow arbitrary code execution",
-                "suggestion": "Avoid dynamic code execution mechanisms"
-            })
-
-    # Large file warning
+    # -----------------------------------------------------
+    # Large file
+    # -----------------------------------------------------
     if len(code.splitlines()) > 500:
         issues.append({
             "severity": "LOW",
@@ -63,44 +68,89 @@ def analyze_generic(code: str):
 
 
 # =========================================================
-# PYTHON ANALYZER
+# PYTHON ANALYZER (AST-BASED SAFE ANALYSIS)
 # =========================================================
 
 class PythonCodeAnalyzer(ast.NodeVisitor):
+
     def __init__(self):
         self.issues = []
+        self.builtin_names = set(dir(builtins))
 
+    # -----------------------------------------------------
+    # Function length detection
+    # -----------------------------------------------------
     def visit_FunctionDef(self, node):
-        length = node.end_lineno - node.lineno + 1
+        if hasattr(node, "end_lineno") and node.end_lineno:
+            length = node.end_lineno - node.lineno + 1
 
-        if length > 30:
-            self.issues.append({
-                "severity": "MEDIUM",
-                "type": "Maintainability",
-                "message": f"Function '{node.name}' is too long ({length} lines)",
-                "impact": "Hard to maintain and test",
-                "suggestion": "Break the function into smaller functions"
-            })
+            if length > 30:
+                self.issues.append({
+                    "severity": "MEDIUM",
+                    "type": "Maintainability",
+                    "message": f"Function '{node.name}' is too long ({length} lines)",
+                    "impact": "Hard to maintain and test",
+                    "suggestion": "Break the function into smaller functions"
+                })
 
         self.generic_visit(node)
 
+    # -----------------------------------------------------
+    # Dangerous call detection (AST SAFE)
+    # -----------------------------------------------------
     def visit_Call(self, node):
-        if isinstance(node.func, ast.Name) and node.func.id == "print":
-            self.issues.append({
-                "severity": "LOW",
-                "type": "Code Smell",
-                "message": "Use of print() detected",
-                "impact": "Not suitable for production logging",
-                "suggestion": "Use a logging framework instead"
-            })
+
+        # Direct call like eval()
+        if isinstance(node.func, ast.Name):
+            func_name = node.func.id
+
+            if func_name in DANGEROUS_KEYWORDS:
+                self.issues.append({
+                    "severity": "CRITICAL",
+                    "type": "Security",
+                    "message": f"Dangerous function '{func_name}()' detected",
+                    "impact": "May allow arbitrary code execution",
+                    "suggestion": "Avoid dynamic execution functions"
+                })
+
+            # print detection
+            if func_name == "print":
+                self.issues.append({
+                    "severity": "LOW",
+                    "type": "Code Smell",
+                    "message": "Use of print() detected",
+                    "impact": "Not suitable for production logging",
+                    "suggestion": "Use a logging framework instead"
+                })
+
+        # Attribute call like os.system()
+        elif isinstance(node.func, ast.Attribute):
+            attr_name = node.func.attr
+
+            if attr_name in DANGEROUS_KEYWORDS:
+                self.issues.append({
+                    "severity": "CRITICAL",
+                    "type": "Security",
+                    "message": f"Dangerous function '{attr_name}()' detected",
+                    "impact": "May allow arbitrary code execution",
+                    "suggestion": "Avoid dynamic execution mechanisms"
+                })
+
         self.generic_visit(node)
 
+    # -----------------------------------------------------
+    # Hardcoded sensitive assignment (AST SAFE)
+    # -----------------------------------------------------
     def visit_Assign(self, node):
+
         for target in node.targets:
             if isinstance(target, ast.Name):
+
                 var_name = target.id.lower()
-                if any(k in var_name for k in SUSPICIOUS_KEYWORDS):
-                    if isinstance(node.value, ast.Constant):
+
+                if any(keyword in var_name for keyword in SUSPICIOUS_KEYWORDS):
+
+                    if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
                         self.issues.append({
                             "severity": "CRITICAL",
                             "type": "Security",
@@ -108,6 +158,7 @@ class PythonCodeAnalyzer(ast.NodeVisitor):
                             "impact": "High risk of credential leakage",
                             "suggestion": "Use environment variables or a secrets manager"
                         })
+
         self.generic_visit(node)
 
 
@@ -118,7 +169,7 @@ def analyze_python(code: str):
         return [{
             "severity": "CRITICAL",
             "type": "Syntax Error",
-            "language": "python",   # 🔥 IMPORTANT FIX
+            "language": "python",
             "message": f"Python syntax error at line {e.lineno}",
             "impact": "Code will not run",
             "suggestion": "Fix syntax before deployment"
@@ -126,21 +177,20 @@ def analyze_python(code: str):
 
     analyzer = PythonCodeAnalyzer()
     analyzer.visit(tree)
+
     return analyzer.issues
 
 
 # =========================================================
-# JAVASCRIPT ANALYZER (PARTIAL SUPPORT)
+# JAVASCRIPT ANALYZER (HEURISTIC SAFE)
 # =========================================================
 
 def analyze_javascript(code: str):
-    """
-    JavaScript analysis using heuristics only.
-    No Python AST is used here.
-    """
-    issues = []
 
-    if "process.exit" in code:
+    issues = []
+    lowered = code.lower()
+
+    if "process.exit(" in lowered:
         issues.append({
             "severity": "CRITICAL",
             "type": "Stability",
@@ -162,21 +212,17 @@ def analyze_javascript(code: str):
 
 
 # =========================================================
-# MAIN DISPATCHER (FINAL, LANGUAGE-SAFE)
+# MAIN DISPATCHER
 # =========================================================
 
 def analyze_code(code: str, language: str):
-    """
-    Main entry point.
-    1. Run generic rules (ALL languages)
-    2. Run language-specific analyzer
-    """
+
     issues = []
 
-    # Step 1: Generic analysis (always safe)
+    # Step 1: Generic rules
     issues.extend(analyze_generic(code))
 
-    # Step 2: Language-specific analysis ONLY
+    # Step 2: Language specific
     language = language.lower()
 
     if language == "python":

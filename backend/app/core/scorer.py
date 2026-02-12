@@ -1,12 +1,16 @@
 SEVERITY_WEIGHTS = {
-    "CRITICAL": 40,
-    "HIGH": 25,
-    "MEDIUM": 15,
-    "LOW": 5
+    "CRITICAL": 25,
+    "HIGH": 15,
+    "MEDIUM": 6,
+    "LOW": 2
 }
 
+
 def calculate_risk(issues):
-    total_risk = 0
+    if not issues:
+        return 0, {}
+
+    total_weight = 0
     category_risk = {
         "security": 0,
         "maintainability": 0,
@@ -14,11 +18,18 @@ def calculate_risk(issues):
         "readability": 0
     }
 
-    for issue in issues:
-        weight = SEVERITY_WEIGHTS.get(issue["severity"], 0)
-        total_risk += weight
+    security_critical_found = False
 
-        issue_type = issue["type"].lower()
+    for issue in issues:
+        severity = issue.get("severity", "LOW")
+        issue_type = issue.get("type", "").lower()
+
+        weight = SEVERITY_WEIGHTS.get(severity, 2)
+        total_weight += weight
+
+        if severity == "CRITICAL" and "security" in issue_type:
+            security_critical_found = True
+
         if "security" in issue_type:
             category_risk["security"] += weight
         elif "maintain" in issue_type:
@@ -28,4 +39,14 @@ def calculate_risk(issues):
         else:
             category_risk["readability"] += weight
 
-    return min(total_risk, 100), category_risk
+    # 🔥 Security override
+    if security_critical_found:
+        return 90, category_risk
+
+    # ✅ Normalize by number of issues
+    normalized = total_weight / len(issues)
+
+    # ✅ Scale gently to 0–100 range
+    final_score = min(int(normalized * 5), 100)
+
+    return final_score, category_risk

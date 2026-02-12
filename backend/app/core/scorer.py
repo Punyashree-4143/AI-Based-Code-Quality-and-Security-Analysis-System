@@ -10,6 +10,7 @@ def calculate_risk(issues):
     print("---- DEBUG SCORER START ----")
     print("Total issues received:", len(issues))
 
+
     if not issues:
         print("No issues detected. Returning 0.")
         print("---- DEBUG SCORER END ----")

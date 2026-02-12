@@ -7,7 +7,12 @@ SEVERITY_WEIGHTS = {
 
 
 def calculate_risk(issues):
+    print("---- DEBUG SCORER START ----")
+    print("Total issues received:", len(issues))
+
     if not issues:
+        print("No issues detected. Returning 0.")
+        print("---- DEBUG SCORER END ----")
         return 0, {}
 
     total_weight = 0
@@ -27,6 +32,8 @@ def calculate_risk(issues):
         weight = SEVERITY_WEIGHTS.get(severity, 2)
         total_weight += weight
 
+        print(f"Issue -> Severity: {severity}, Weight: {weight}, Type: {issue_type}")
+
         if severity == "CRITICAL" and "security" in issue_type:
             security_critical_found = True
 
@@ -39,14 +46,19 @@ def calculate_risk(issues):
         else:
             category_risk["readability"] += weight
 
+    print("Total weight:", total_weight)
+
     # 🔥 Security override
     if security_critical_found:
+        print("Security CRITICAL detected → Returning 90")
+        print("---- DEBUG SCORER END ----")
         return 90, category_risk
 
-    # ✅ Normalize by number of issues
     normalized = total_weight / len(issues)
-
-    # ✅ Scale gently to 0–100 range
     final_score = min(int(normalized * 5), 100)
+
+    print("Normalized value:", normalized)
+    print("Final static risk:", final_score)
+    print("---- DEBUG SCORER END ----")
 
     return final_score, category_risk

@@ -25,14 +25,20 @@ class ProjectASTParser(ast.NodeVisitor):
         self.generic_visit(node)
 
     # --------------------------------------------------
-    # Function / method calls
+    # Function calls (ONLY standalone functions)
     # --------------------------------------------------
     def visit_Call(self, node):
+        # Capture only direct calls like:
+        # my_function()
         if isinstance(node.func, ast.Name):
             self.called_functions.add(node.func.id)
 
-        elif isinstance(node.func, ast.Attribute):
-            self.called_functions.add(node.func.attr)
+        # DO NOT capture attribute calls like:
+        # obj.method()
+        # module.func()
+        # router.get()
+        # my_list.append()
+        # etc.
 
         self.generic_visit(node)
 
@@ -85,7 +91,7 @@ def parse_project_files(files):
         for cls in parser.defined_classes:
             project_data["class_definitions"][cls].append(file.path)
 
-        # Collect calls
+        # Collect function calls
         for fn in parser.called_functions:
             project_data["calls"][fn].append(file.path)
 

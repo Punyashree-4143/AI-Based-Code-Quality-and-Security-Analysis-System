@@ -12,10 +12,12 @@ def detect_project_issues(project_data):
     definitions = project_data.get("definitions", {})
     class_definitions = project_data.get("class_definitions", {})
     calls = project_data.get("calls", {})
-    imports_dict = project_data.get("imports", {})
+    imports = project_data.get("imports", {})
 
-    # Flatten imports into a set
-    imported_symbols = set(imports_dict.keys())
+    # --------------------------------------------------
+    # Collect project-wide imported symbols
+    # --------------------------------------------------
+    imported_symbols = set(imports.keys())
 
     # Real Python builtins
     PYTHON_BUILTINS = set(dir(builtins))
@@ -25,27 +27,26 @@ def detect_project_issues(project_data):
     # ==================================================
     for func_name, call_files in calls.items():
 
-        # Ignore empty names
         if not func_name:
             continue
 
-        # Ignore builtins
+        # Ignore builtins (round, bool, isinstance, etc.)
         if func_name in PYTHON_BUILTINS:
             continue
 
-        # Ignore imported symbols
+        # Ignore imported symbols (load_dotenv, defaultdict, etc.)
         if func_name in imported_symbols:
             continue
 
-        # Ignore class constructors
+        # Ignore class constructors defined in project
         if func_name in class_definitions:
             continue
 
-        # Ignore capitalized names (likely framework classes)
+        # Ignore likely framework classes (FastAPI, APIRouter, etc.)
         if func_name[0].isupper():
             continue
 
-        # Real missing function
+        # Real missing function (internal only)
         if func_name not in definitions:
             for file in call_files:
                 issues.append({
@@ -62,6 +63,7 @@ def detect_project_issues(project_data):
     # ==================================================
     for func_name, def_files in definitions.items():
 
+        # Ignore private/internal helpers
         if func_name.startswith("_"):
             continue
 

@@ -1,3 +1,6 @@
+import builtins
+
+
 def detect_project_issues(project_data):
     """
     Input: project_data from STEP 2
@@ -8,26 +11,31 @@ def detect_project_issues(project_data):
 
     definitions = project_data["definitions"]
     calls = project_data["calls"]
+    imports = project_data.get("imports", set())
 
     # ==================================================
-    # Python built-in functions to IGNORE
+    # Use REAL Python builtins (not manual list)
     # ==================================================
-    PYTHON_BUILTINS = {
-        "print", "len", "range", "sum", "min", "max",
-        "open", "input", "str", "int", "float",
-        "list", "dict", "set", "tuple",
-        "enumerate", "zip", "map", "filter",
-        "any", "all", "abs", "sorted"
-    }
+    PYTHON_BUILTINS = set(dir(builtins))
 
-    # --------------------------------------------------
+    # ==================================================
     # 1. Function used but not defined (CRITICAL)
-    # --------------------------------------------------
+    # ==================================================
     for func_name, call_files in calls.items():
-        # 🔥 Ignore built-in functions
+
+        # Ignore builtins
         if func_name in PYTHON_BUILTINS:
             continue
 
+        # Ignore imported symbols
+        if func_name in imports:
+            continue
+
+        # Ignore class-like names (Capitalized → likely framework class)
+        if func_name and func_name[0].isupper():
+            continue
+
+        # Real missing function
         if func_name not in definitions:
             for file in call_files:
                 issues.append({
@@ -39,10 +47,14 @@ def detect_project_issues(project_data):
                     "path": file
                 })
 
-    # --------------------------------------------------
+    # ==================================================
     # 2. Function defined but never used (Dead Code)
-    # --------------------------------------------------
+    # ==================================================
     for func_name, def_files in definitions.items():
+
+        if func_name.startswith("_"):
+            continue  # ignore private/internal
+
         if func_name not in calls:
             for file in def_files:
                 issues.append({
@@ -54,9 +66,9 @@ def detect_project_issues(project_data):
                     "path": file
                 })
 
-    # --------------------------------------------------
+    # ==================================================
     # 3. Duplicate function definitions
-    # --------------------------------------------------
+    # ==================================================
     for func_name, def_files in definitions.items():
         if len(def_files) > 1:
             issues.append({

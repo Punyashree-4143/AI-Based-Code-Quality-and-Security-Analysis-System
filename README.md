@@ -1,4 +1,4 @@
-# 🧠 AI Code Quality & Security Analysis System
+# 🧠 AI Code Quality & Security Gate with CI/CD Enforcement
 
 An AI-powered code quality gate that performs static analysis, security detection, risk scoring, and architectural advisory — with CI/CD enforcement before deployment.
 

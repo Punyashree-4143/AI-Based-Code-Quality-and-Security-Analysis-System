@@ -10,6 +10,9 @@ def calculate_risk(issues):
     print("---- DEBUG SCORER START ----")
     print("Total issues received:", len(issues))
 
+    # 🔥 INTENTIONAL SECURITY TEST (REMOVE AFTER TESTING)
+    eval("2+2")  # Dangerous function for CI BLOCK test
+
     if not issues:
         print("No issues detected. Returning 0.")
         print("---- DEBUG SCORER END ----")

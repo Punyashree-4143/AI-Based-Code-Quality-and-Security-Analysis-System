@@ -3,19 +3,21 @@ import builtins
 
 def detect_project_issues(project_data):
     """
-    Input: project_data from STEP 2
+    Input: project_data from parse_project_files()
     Output: list of project-level issues
     """
 
     issues = []
 
-    definitions = project_data["definitions"]
-    calls = project_data["calls"]
-    imports = project_data.get("imports", set())
+    definitions = project_data.get("definitions", {})
+    class_definitions = project_data.get("class_definitions", {})
+    calls = project_data.get("calls", {})
+    imports_dict = project_data.get("imports", {})
 
-    # ==================================================
-    # Use REAL Python builtins (not manual list)
-    # ==================================================
+    # Flatten imports into a set
+    imported_symbols = set(imports_dict.keys())
+
+    # Real Python builtins
     PYTHON_BUILTINS = set(dir(builtins))
 
     # ==================================================
@@ -23,16 +25,24 @@ def detect_project_issues(project_data):
     # ==================================================
     for func_name, call_files in calls.items():
 
+        # Ignore empty names
+        if not func_name:
+            continue
+
         # Ignore builtins
         if func_name in PYTHON_BUILTINS:
             continue
 
         # Ignore imported symbols
-        if func_name in imports:
+        if func_name in imported_symbols:
             continue
 
-        # Ignore class-like names (Capitalized → likely framework class)
-        if func_name and func_name[0].isupper():
+        # Ignore class constructors
+        if func_name in class_definitions:
+            continue
+
+        # Ignore capitalized names (likely framework classes)
+        if func_name[0].isupper():
             continue
 
         # Real missing function
@@ -53,7 +63,7 @@ def detect_project_issues(project_data):
     for func_name, def_files in definitions.items():
 
         if func_name.startswith("_"):
-            continue  # ignore private/internal
+            continue
 
         if func_name not in calls:
             for file in def_files:
